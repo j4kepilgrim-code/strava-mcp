@@ -22,7 +22,8 @@ export interface StravaActivity {
   name: string;
   type: string;             // Run | Ride | Swim | WeightTraining | ...
   sport_type: string;
-  start_date: string;       // ISO 8601
+  start_date: string;       // ISO 8601 UTC
+  start_date_local: string; // ISO 8601 in athlete's local timezone
   distance: number;         // metres
   moving_time: number;      // seconds
   elapsed_time: number;     // seconds

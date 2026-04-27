@@ -70,7 +70,7 @@ function mapActivity(a: StravaActivity, athleteId: string): NewActivity {
     strava_id: a.id.toString(),
     athlete_id: athleteId,
     sport_type: sportType,
-    activity_date: a.start_date.split('T')[0],
+    activity_date: (a.start_date_local ?? a.start_date).split('T')[0],
     distance_m: a.distance ?? null,
     moving_time_s: a.moving_time ?? null,
     elapsed_time_s: a.elapsed_time ?? null,

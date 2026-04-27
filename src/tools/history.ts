@@ -44,11 +44,23 @@ export async function getActivityHistory(weeks = 8, sport?: string): Promise<str
     const sportBreakdown = getSportBreakdown(week);
 
     lines.push(
-      `| ${weekStart} | ${week.length} (${sportBreakdown}) | ${formatKm(totalDist)} | ${formatDuration(totalDur)} | ${Math.round(totalElev)}m |`
+      '',
+      `### Week of ${weekStart} — ${week.length} sessions (${sportBreakdown}) | ${formatKm(totalDist)} | ${formatDuration(totalDur)} | ${Math.round(totalElev)}m elev`,
+      ''
     );
+
+    for (const a of [...week].sort((x, y) => x.activity_date.localeCompare(y.activity_date))) {
+      const dayName = new Date(a.activity_date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+      const pace = getPaceString(a);
+      const hr = a.avg_hr ? ` | ${a.avg_hr}bpm` : '';
+      lines.push(
+        `- **${dayName}** — ${a.sport_type} ${formatKm(a.distance_m)} ${formatDuration(a.moving_time_s)}${pace}${hr}`,
+        `  - DB ID: \`${a.id}\` | Strava ID: \`${a.strava_id}\``
+      );
+    }
   }
 
-  lines.push('', `_${activities.length} total sessions shown_`);
+  lines.push('', `_${activities.length} total sessions shown. Use DB ID with \`get_activity_detail\` or Strava ID with \`analyse_workout\`._`);
   return lines.join('\n');
 }
 
@@ -114,4 +126,13 @@ function formatDuration(seconds: number | null | undefined): string {
 
 function formatKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getPaceString(a: Activity): string {
+  if (!a.sport_data) return '';
+  const d = a.sport_data as unknown as Record<string, unknown>;
+  if (a.sport_type === 'Run' && d['avg_pace_per_km']) return ` @ ${d['avg_pace_per_km']}/km`;
+  if (a.sport_type === 'Ride' && d['avg_speed_kph']) return ` @ ${d['avg_speed_kph']}km/h`;
+  if (a.sport_type === 'Swim' && d['avg_pace_per_100m']) return ` @ ${d['avg_pace_per_100m']}/100m`;
+  return '';
 }

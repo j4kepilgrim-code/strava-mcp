@@ -25,6 +25,58 @@ export function estimateThresholdHr(activities: Activity[]): number {
   return Math.round(maxHr * 0.88);
 }
 
+// Estimates running threshold pace from recent activity history.
+// Uses HR-based approach when avg_hr data is available (runs at 85–92% of estimated max HR).
+// Falls back to the median of the 3 fastest 20–45 min efforts + 10s/km correction.
+// Returns MM:SS string or null if there is insufficient run data.
+export function estimateThresholdPace(activities: Activity[]): string | null {
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const cutoff = ninetyDaysAgo.toISOString().split('T')[0]!;
+
+  // Runs of 15–60 min with ≥3km distance — long enough to be effort-based
+  const runs = activities.filter(
+    (a) =>
+      a.sport_type === 'Run' &&
+      a.activity_date >= cutoff &&
+      a.distance_m !== null && a.distance_m >= 3000 &&
+      a.moving_time_s !== null &&
+      a.moving_time_s >= 900 &&   // 15 min minimum
+      a.moving_time_s <= 3600     // 60 min maximum
+  );
+
+  if (runs.length === 0) return null;
+
+  // HR-based: find runs at threshold HR range (85–92% of estimated max HR)
+  const threshHr = estimateThresholdHr(activities);
+  const maxHr = threshHr / 0.88;
+  const hrLow = maxHr * 0.85;
+  const hrHigh = maxHr * 0.92;
+  const hrRuns = runs.filter((a) => a.avg_hr !== null && a.avg_hr >= hrLow && a.avg_hr <= hrHigh);
+
+  const targetRuns = hrRuns.length >= 2 ? hrRuns : runs;
+
+  // Average pace (s/km), filter out unrealistic values
+  const paces = targetRuns
+    .map((a) => a.moving_time_s! / (a.distance_m! / 1000))
+    .filter((p) => p >= 150 && p <= 600) // 2:30–10:00/km sanity range
+    .sort((a, b) => a - b); // ascending = fastest first
+
+  if (paces.length === 0) return null;
+
+  // Median of top 3 fastest — avoids a single outlier race skewing the result
+  const top = paces.slice(0, Math.min(3, paces.length));
+  const median = top[Math.floor(top.length / 2)]!;
+
+  // When using pace-only fallback, add 10s/km correction since top efforts may be above threshold
+  const corrected = hrRuns.length >= 2 ? median : median + 10;
+
+  const rounded = Math.round(corrected / 5) * 5; // round to nearest 5s for clean display
+  const m = Math.floor(rounded / 60);
+  const s = rounded % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export interface CtlAtlResult {
   ctl: number;
   atl: number;

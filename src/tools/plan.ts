@@ -10,6 +10,7 @@ import {
   updatePlanStatus,
   getLatestSnapshot,
   getActivities,
+  getRecentCoachingNotes,
 } from '../db/queries';
 import {
   generatePlan,
@@ -74,12 +75,19 @@ export async function getCurrentPlan(): Promise<string> {
       const dayName = new Date(s.scheduled_date).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
       const status = s.status !== 'planned' ? ` _(${s.status})_` : '';
       lines.push(`**${dayName} ${s.scheduled_date}** — ${formatSessionType(s.session_type)} [${s.priority}]${status}`);
-      if (s.targets?.pace_zone) lines.push(`  - Pace: ${s.targets.pace_zone}`);
-      if (s.targets?.duration_s) lines.push(`  - Duration: ${formatDuration(s.targets.duration_s)}`);
-      if (s.targets?.distance_m) lines.push(`  - Distance: ${(s.targets.distance_m / 1000).toFixed(1)}km`);
+      lines.push(...formatTargetLines(s.targets));
       lines.push(`  - _${s.rationale}_`);
       lines.push(`  - Session ID: \`${s.id}\``);
       lines.push('');
+    }
+  }
+
+  // Append recent coaching notes (last 14 days) so Claude has context
+  const notes = await getRecentCoachingNotes(athlete.id, 14);
+  if (notes.length > 0) {
+    lines.push('### Recent Notes');
+    for (const n of notes) {
+      lines.push(`- **${n.note_date}:** ${n.content}`);
     }
   }
 
@@ -126,6 +134,7 @@ export async function createPlan(params: {
   available_days: number;
   max_hours_per_week: number;
   start_date?: string;
+  override_min_weeks?: boolean;
 }): Promise<string> {
   const tokens = loadTokens();
   if (!tokens) throw new Error('Not authenticated');
@@ -147,7 +156,7 @@ export async function createPlan(params: {
   );
 
   const minWeeks = MIN_WEEKS[goalType];
-  if (weeksToGoal < minWeeks) {
+  if (weeksToGoal < minWeeks && !params.override_min_weeks) {
     const alternatives: Record<GoalType, GoalType | null> = {
       'marathon': 'half_marathon',
       'half_marathon': '10k',
@@ -156,8 +165,8 @@ export async function createPlan(params: {
     };
     const alt = alternatives[goalType];
     const altMsg = alt
-      ? ` I could build you a ${alt.replace('_', ' ')} plan instead, or push the goal date to at least ${minWeeksDate(minWeeks)}.`
-      : ' Consider choosing a later race date.';
+      ? ` I could build you a ${alt.replace('_', ' ')} plan instead, or push the goal date to at least ${minWeeksDate(minWeeks)}. To create this plan anyway, set override_min_weeks: true.`
+      : ` Consider choosing a later race date. To create this plan anyway, set override_min_weeks: true.`;
     return `You have ${weeksToGoal} week${weeksToGoal === 1 ? '' : 's'} to ${params.goal_date} — not enough for a ${goalType.replace('_', ' ')} (needs ${minWeeks} weeks minimum).${altMsg}`;
   }
 
@@ -267,6 +276,20 @@ export async function getPlanRecommendationTool(goal_type: string, goal_date: st
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatTargetLines(targets: import('../db/schema').SessionTargets | null | undefined): string[] {
+  if (!targets) return [];
+  const lines: string[] = [];
+  // Structured sessions (intervals/threshold) have a full description — show it first
+  if (targets.description) lines.push(`  - **Session:** ${targets.description}`);
+  if (targets.pace_zone) lines.push(`  - **Pace zone:** ${targets.pace_zone}`);
+  // Only show duration/distance when there's no structured description (easy_run, long_run, etc.)
+  if (!targets.description) {
+    if (targets.duration_s) lines.push(`  - **Duration:** ${formatDuration(targets.duration_s)}`);
+    if (targets.distance_m) lines.push(`  - **Distance:** ${(targets.distance_m / 1000).toFixed(1)}km`);
+  }
+  return lines;
+}
 
 function formatSessionType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

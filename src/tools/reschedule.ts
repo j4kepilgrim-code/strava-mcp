@@ -7,6 +7,7 @@ import {
   getSessionById,
   updateSession,
   insertSessionEdit,
+  insertCoachingNote,
 } from '../db/queries';
 import {
   swapSessions,
@@ -211,11 +212,23 @@ export async function rescaleWeekTool(weekNumber: number, loadFactor: number): P
 }
 
 export async function addNoteTool(note: string, date?: string): Promise<string> {
+  const tokens = loadTokens();
+  if (!tokens) throw new Error('Not authenticated');
+
+  const athlete = await getAthleteByStravaId(tokens.athlete_id.toString());
+  if (!athlete) throw new Error('Athlete not found — run sync_recent_activities first');
+
   const today = new Date().toISOString().split('T')[0]!;
   const noteDate = date ?? today;
-  // Notes stored as coaching log — for now return confirmation
-  // Full implementation in Step 11 will store to DB
-  return `Note logged for ${noteDate}: "${note}"`;
+
+  await insertCoachingNote({
+    id: crypto.randomUUID(),
+    athlete_id: athlete.id,
+    note_date: noteDate,
+    content: note,
+  });
+
+  return `Note logged for ${noteDate}: "${note}"\n\nThis will appear in your plan context so I can reference it when making coaching decisions.`;
 }
 
 function formatSession(s: PlanSession): string {

@@ -88,9 +88,16 @@ export function startWebhookServer(port = Number(process.env.PORT ?? 3000)): voi
     res.json({ status: 'ok', service: 'strava-mcp-webhook' });
   });
 
-  app.listen(port, () => {
+  const httpServer = app.listen(port, () => {
     log(`Webhook server listening on port ${port}`);
-    log(`Strava callback URL: http://<your-host>:${port}/webhook`);
+  });
+
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log(`Port ${port} already in use — OAuth callback and webhook unavailable. If auth is needed, restart Claude Desktop to free the port.`);
+    } else {
+      logError('Webhook server error', err);
+    }
   });
 }
 

@@ -7,6 +7,7 @@ import {
   getLatestSnapshot,
   getActivities,
   updateActivitySportData,
+  getRecentCompletedSessions,
 } from '../db/queries';
 import { getActivityDetail as fetchStravaDetail } from '../strava/client';
 import type { Activity, AthleteSnapshot, Athlete, PlanSession, RunData, RideData, SwimData, LapData } from '../db/schema';
@@ -64,7 +65,15 @@ export async function analyseWorkout(stravaActivityId: string): Promise<string> 
 
   const snapshot = await getLatestSnapshot(athlete.id);
 
-  return formatReport(activity, matchedSession, weekSessions, previousActivity, snapshot, athlete);
+  const report = formatReport(activity, matchedSession, weekSessions, previousActivity, snapshot, athlete);
+
+  // Append calibration signal if there's enough data to detect pace drift
+  if (plan) {
+    const calibration = await computeCalibrationSignal(plan.id, athlete.threshold_pace ?? null);
+    if (calibration) return `${report}\n\n${calibration}`;
+  }
+
+  return report;
 }
 
 // ─── Lap mapping ─────────────────────────────────────────────────────────────
@@ -143,9 +152,12 @@ function formatReport(
   if (session) {
     lines.push('### Planned Session');
     lines.push(`- **Type:** ${formatType(session.session_type)} [${session.priority}]`);
-    if (session.targets?.duration_s) lines.push(`- **Target duration:** ${formatDuration(session.targets.duration_s)}`);
-    if (session.targets?.distance_m) lines.push(`- **Target distance:** ${(session.targets.distance_m / 1000).toFixed(1)}km`);
-    if (session.targets?.pace_zone) lines.push(`- **Target pace:** ${session.targets.pace_zone}`);
+    if (session.targets?.description) lines.push(`- **Session:** ${session.targets.description}`);
+    if (session.targets?.pace_zone) lines.push(`- **Pace zone:** ${session.targets.pace_zone}`);
+    if (!session.targets?.description) {
+      if (session.targets?.duration_s) lines.push(`- **Target duration:** ${formatDuration(session.targets.duration_s)}`);
+      if (session.targets?.distance_m) lines.push(`- **Target distance:** ${(session.targets.distance_m / 1000).toFixed(1)}km`);
+    }
     lines.push(`- **Rationale:** _${session.rationale}_`);
     lines.push('');
   } else {
@@ -283,6 +295,65 @@ function getPaceTrend(current: Activity, previous: Activity): string | null {
   }
 
   return null;
+}
+
+// ─── Calibration signal ───────────────────────────────────────────────────────
+
+async function computeCalibrationSignal(planId: string, currentThresholdPace: string | null): Promise<string | null> {
+  const completed = await getRecentCompletedSessions(planId, 5);
+  if (completed.length < 3) return null;
+
+  const deviations: number[] = [];
+
+  for (const session of completed) {
+    if (!session.strava_activity_id) continue;
+    const targets = session.targets;
+    if (!targets?.pace_zone) continue;
+
+    const activity = await getActivityByStravaId(session.strava_activity_id);
+    if (!activity?.moving_time_s || !activity.distance_m || activity.distance_m < 500) continue;
+
+    // Parse midpoint pace from pace_zone (e.g. "5:00–5:30/km" → 315 s/km)
+    const zone = targets.pace_zone.replace('/km', '').split('–');
+    if (zone.length !== 2) continue;
+    const zoneSecValues = zone.map((p) => {
+      const parts = p.trim().split(':').map(Number);
+      return parts.length === 2 ? parts[0]! * 60 + parts[1]! : null;
+    });
+    if (zoneSecValues.some((v) => v === null)) continue;
+    const plannedPaceSec = (zoneSecValues[0]! + zoneSecValues[1]!) / 2;
+
+    const actualPaceSec = activity.moving_time_s / (activity.distance_m / 1000);
+    const deviationPct = (actualPaceSec - plannedPaceSec) / plannedPaceSec * 100;
+    deviations.push(deviationPct);
+  }
+
+  if (deviations.length < 3) return null;
+
+  const avgDeviation = deviations.reduce((a, b) => a + b, 0) / deviations.length;
+
+  // Only surface a signal when drift is consistent and meaningful
+  if (Math.abs(avgDeviation) < 5) return null;
+
+  const direction = avgDeviation < 0 ? 'faster' : 'slower';
+  const absDev = Math.abs(avgDeviation).toFixed(0);
+
+  let suggestion = '';
+  if (avgDeviation < -5 && currentThresholdPace) {
+    const [tMin, tSec] = currentThresholdPace.split(':').map(Number);
+    const currentSec = (tMin ?? 0) * 60 + (tSec ?? 0);
+    const newSec = Math.round(currentSec * (1 - Math.abs(avgDeviation) / 100));
+    const newMin = Math.floor(newSec / 60);
+    const newS = newSec % 60;
+    const newPace = `${newMin}:${newS.toString().padStart(2, '0')}`;
+    suggestion = `Suggested: \`update_athlete_profile({ threshold_pace: "${newPace}" })\` then \`recalibrate_plan()\``;
+  } else if (avgDeviation > 8) {
+    suggestion = 'Check for accumulated fatigue, illness, or an over-estimated threshold pace.';
+  } else if (avgDeviation < -5) {
+    suggestion = 'Consider setting a threshold_pace in your profile to unlock numeric targets, then recalibrate.';
+  }
+
+  return `---\n**Calibration note (last ${deviations.length} sessions):** You're averaging ${absDev}% ${direction} than targets.\n${suggestion}`;
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

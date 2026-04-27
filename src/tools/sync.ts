@@ -6,8 +6,10 @@ import {
   getAthleteByStravaId,
   upsertActivities,
   getMostRecentActivityDate,
+  getActivities as getDbActivities,
 } from '../db/queries';
 import { buildAndSaveSnapshot } from '../engine/profile';
+import { estimateThresholdPace } from '../engine/metrics';
 import type { NewActivity, RunData, RideData, SwimData } from '../db/schema';
 import type { StravaActivity } from '../strava/types';
 
@@ -54,12 +56,24 @@ export async function syncRecentActivities(): Promise<{ synced: number; message:
   await upsertActivities(activities);
   await buildAndSaveSnapshot(athlete.id);
 
-  return {
-    synced: activities.length,
-    message: lastSynced
-      ? `Synced ${activities.length} new activities since last sync`
-      : `Cold start: synced ${activities.length} activities from the past 5 years`,
-  };
+  // Auto-estimate threshold pace on first sync if not already set
+  let thresholdNote = '';
+  if (!athlete.threshold_pace) {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const recentRuns = await getDbActivities(athlete.id, ninetyDaysAgo.toISOString().split('T')[0]!, 'Run');
+    const estimated = estimateThresholdPace(recentRuns);
+    if (estimated) {
+      await upsertAthlete({ ...athlete, threshold_pace: estimated });
+      thresholdNote = ` Threshold pace auto-estimated at ${estimated}/km from your recent runs — use update_athlete_profile to correct if it feels off.`;
+    }
+  }
+
+  const baseMessage = lastSynced
+    ? `Synced ${activities.length} new activities since last sync`
+    : `Cold start: synced ${activities.length} activities from the past 5 years`;
+
+  return { synced: activities.length, message: baseMessage + thresholdNote };
 }
 
 function mapActivity(a: StravaActivity, athleteId: string): NewActivity {

@@ -6,6 +6,7 @@ import type {
   Plan, NewPlan,
   PlanSession, NewPlanSession,
   SessionEdit, NewSessionEdit,
+  CoachingNote, NewCoachingNote,
 } from './schema';
 
 // ─── JSON helpers ─────────────────────────────────────────────────────────────
@@ -267,4 +268,29 @@ export async function insertSessionEdit(edit: NewSessionEdit): Promise<SessionEd
 export async function getSessionEdits(sessionId: string): Promise<SessionEdit[]> {
   const rows = db.prepare('SELECT * FROM session_edits WHERE session_id = ? ORDER BY created_at ASC').all(sessionId) as Record<string, unknown>[];
   return rows.map(mapEdit);
+}
+
+// ─── Coaching Notes ───────────────────────────────────────────────────────────
+
+export async function insertCoachingNote(note: NewCoachingNote): Promise<CoachingNote> {
+  db.prepare(
+    'INSERT INTO coaching_notes (id, athlete_id, note_date, content) VALUES (@id, @athlete_id, @note_date, @content)'
+  ).run(note);
+  return db.prepare('SELECT * FROM coaching_notes WHERE id = ?').get(note.id) as CoachingNote;
+}
+
+export async function getRecentCoachingNotes(athleteId: string, days: number): Promise<CoachingNote[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const rows = db.prepare(
+    'SELECT * FROM coaching_notes WHERE athlete_id = ? AND note_date >= ? ORDER BY note_date DESC'
+  ).all(athleteId, since.toISOString().split('T')[0]!) as CoachingNote[];
+  return rows;
+}
+
+export async function getRecentCompletedSessions(planId: string, limit: number): Promise<PlanSession[]> {
+  const rows = db.prepare(
+    "SELECT * FROM plan_sessions WHERE plan_id = ? AND status = 'completed' ORDER BY scheduled_date DESC LIMIT ?"
+  ).all(planId, limit) as Record<string, unknown>[];
+  return rows.map(mapSession);
 }

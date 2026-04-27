@@ -9,6 +9,7 @@ import {
   updateSession,
 } from '../db/queries';
 import { buildPaceTargets, formatSec } from '../engine/operations';
+import { getPhaseInfo, buildSessionStructure, type GoalType } from '../engine/plan';
 import type { Athlete } from '../db/schema';
 
 export async function getAthleteProfile(): Promise<string> {
@@ -160,6 +161,14 @@ export async function recalibratePlan(): Promise<string> {
 
   const [min, sec] = athlete.threshold_pace.split(':').map(Number);
   const thresholdSec = (min ?? 0) * 60 + (sec ?? 0);
+  const goalType = plan.goal_type as GoalType;
+
+  // Derive total weeks from plan dates so phase info can be recomputed
+  const planCreated = new Date(plan.created_at);
+  const goalDate = new Date(plan.goal_date);
+  const mondayOffset = planCreated.getUTCDay() === 0 ? -6 : 1 - planCreated.getUTCDay();
+  planCreated.setUTCDate(planCreated.getUTCDate() + mondayOffset);
+  const totalWeeks = Math.ceil((goalDate.getTime() - planCreated.getTime()) / (7 * 86400000));
 
   let updatedCount = 0;
   const changes: string[] = [];
@@ -167,22 +176,32 @@ export async function recalibratePlan(): Promise<string> {
   for (const session of plannedSessions) {
     if (session.session_type === 'race' || session.session_type === 'recovery') continue;
 
-    const newTargets = buildPaceTargets(session.session_type as Parameters<typeof buildPaceTargets>[0], thresholdSec);
-    if (!newTargets.pace_zone) continue;
+    const paceTargets = buildPaceTargets(session.session_type as Parameters<typeof buildPaceTargets>[0], thresholdSec);
+    if (!paceTargets.pace_zone) continue;
 
     const oldPace = session.targets?.pace_zone;
-    if (oldPace === newTargets.pace_zone) continue;
 
-    await updateSession(session.id, {
-      targets: { ...session.targets, ...newTargets },
-    });
+    // Rebuild structured targets for intervals and threshold
+    let structuredOverride = {};
+    if (session.session_type === 'intervals' || session.session_type === 'threshold') {
+      const { phase, weekInPhase, phaseLength } = getPhaseInfo(session.week_number, totalWeeks, goalType);
+      const structure = buildSessionStructure(session.session_type, goalType, phase, weekInPhase, phaseLength, thresholdSec);
+      if (Object.keys(structure).length > 0) structuredOverride = structure;
+    }
+
+    const newTargets = { ...session.targets, ...paceTargets, ...structuredOverride };
+    await updateSession(session.id, { targets: newTargets });
     updatedCount++;
 
     if (changes.length < 3) {
-      changes.push(`${session.session_type.replace('_', ' ')}: ${oldPace ?? 'none'} → ${newTargets.pace_zone}`);
+      const repPace = (structuredOverride as Record<string, unknown>)['rep_pace'];
+      const changeDesc = repPace
+        ? `${session.session_type.replace('_', ' ')}: rep pace → ${repPace}`
+        : `${session.session_type.replace('_', ' ')}: ${oldPace ?? 'none'} → ${paceTargets.pace_zone}`;
+      changes.push(changeDesc);
     }
   }
 
   const sample = changes.length > 0 ? `\n\nSample changes:\n${changes.map((c) => `- ${c}`).join('\n')}` : '';
-  return `Recalibrated ${updatedCount} of ${plannedSessions.length} remaining sessions with updated pace zones based on ${athlete.threshold_pace}/km threshold pace.${sample}`;
+  return `Recalibrated ${updatedCount} of ${plannedSessions.length} remaining sessions with updated pace targets based on ${athlete.threshold_pace}/km threshold pace.${sample}`;
 }

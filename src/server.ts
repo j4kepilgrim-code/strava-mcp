@@ -32,7 +32,7 @@ function err(text: string) {
 function requireAuth(): void {
   if (!loadTokens()) {
     throw new UserError(
-      'Not connected to Strava. Call get_oauth_url first, open the URL in your browser, then call exchange_token with the code from the redirect.'
+      'Not connected to Strava. Call get_oauth_url, open the URL in your browser, and click Authorise — the connection completes automatically.'
     );
   }
 }
@@ -57,7 +57,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'exchange_token',
-      description: 'Completes Strava OAuth by exchanging the authorization code from the redirect URL. Call this after visiting the URL from get_oauth_url and approving access.',
+      description: 'Manual fallback: exchanges a Strava authorization code for tokens. Only needed if the automatic redirect to localhost:3000 failed (e.g. port conflict). In normal use, get_oauth_url handles auth automatically via the browser redirect.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -150,6 +150,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           available_days: { type: 'number', description: 'Number of training days available per week (1–7)' },
           max_hours_per_week: { type: 'number', description: 'Maximum total training hours per week' },
           start_date: { type: 'string', description: 'ISO 8601 date for the first day of week 1. Use this when the athlete has a race or recovery period before training begins (e.g. "2026-05-05" to start the Monday after a Sunday race).' },
+          override_min_weeks: { type: 'boolean', description: 'Set to true to bypass the minimum weeks check and create the plan anyway. Use only when the athlete explicitly acknowledges the plan will be compressed (e.g. they have a race in 10 weeks but still want a marathon plan).' },
         },
         required: ['goal_type', 'goal_date', 'available_days', 'max_hours_per_week'],
       },
@@ -283,7 +284,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'get_oauth_url': {
         const url = getAuthUrl();
-        return ok(`Open this URL in your browser to connect Strava:\n\n${url}\n\nAfter approving, copy the "code" parameter from the redirect URL and call exchange_token.`);
+        return ok(`Open this URL in your browser to connect your Strava account:\n\n${url}\n\nAfter you click "Authorise" on Strava, you'll be redirected to a page that says "Connected to Strava!" — that's it, no further steps needed. Then call sync_recent_activities.`);
       }
 
       case 'exchange_token': {
@@ -353,6 +354,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           available_days: args['available_days'] as number,
           max_hours_per_week: args['max_hours_per_week'] as number,
           start_date: typeof args['start_date'] === 'string' ? args['start_date'] : undefined,
+          override_min_weeks: args['override_min_weeks'] === true,
         }));
       }
 

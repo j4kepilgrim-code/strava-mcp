@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS plan_sessions (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS coaching_notes (
+  id TEXT PRIMARY KEY,
+  athlete_id TEXT REFERENCES athlete(id),
+  note_date TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS session_edits (
   id TEXT PRIMARY KEY,
   session_id TEXT REFERENCES plan_sessions(id),
@@ -213,6 +221,23 @@ export interface SessionTargets {
   power_zone?: string;
   hr_zone?: string;
   description?: string;
+  // Structured session detail (intervals + threshold)
+  reps?: number;
+  rep_distance_m?: number;   // for distance-based reps (intervals)
+  rep_duration_s?: number;   // for time-based reps (threshold blocks)
+  rep_pace?: string;         // single target pace e.g. "4:15/km"
+  recovery_s?: number;
+  recovery_type?: 'jog' | 'walk';
+  warmup_s?: number;
+  cooldown_s?: number;
+}
+
+export interface CoachingNote {
+  id: string;
+  athlete_id: string;
+  note_date: string;
+  content: string;
+  created_at: string;
 }
 
 export interface SessionEdit {
@@ -227,6 +252,7 @@ export interface SessionEdit {
 }
 
 // Insert types — omit server-generated fields
+export type NewCoachingNote = Omit<CoachingNote, 'created_at'>;
 export type NewAthlete = Omit<Athlete, 'updated_at'>;
 export type NewActivity = Omit<Activity, 'synced_at'>;
 export type NewAthleteSnapshot = Omit<AthleteSnapshot, 'created_at'>;

@@ -16,7 +16,7 @@ export async function upsertAthlete(athlete: NewAthlete): Promise<Athlete> {
     .upsert({ ...athlete, updated_at: new Date().toISOString() })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Athlete;
 }
 
@@ -26,7 +26,7 @@ export async function getAthleteById(id: string): Promise<Athlete | null> {
     .select()
     .eq('id', id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Athlete | null;
 }
 
@@ -36,7 +36,7 @@ export async function getAthleteByStravaId(stravaId: string): Promise<Athlete | 
     .select()
     .eq('strava_id', stravaId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Athlete | null;
 }
 
@@ -47,7 +47,7 @@ export async function upsertActivities(activities: NewActivity[]): Promise<void>
   const { error } = await db
     .from('activities')
     .upsert(activities, { onConflict: 'strava_id' });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 }
 
 export async function getActivities(
@@ -65,7 +65,7 @@ export async function getActivities(
   if (sport) query = query.eq('sport_type', sport);
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as Activity[];
 }
 
@@ -75,7 +75,7 @@ export async function getActivityById(id: string): Promise<Activity | null> {
     .select()
     .eq('id', id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Activity | null;
 }
 
@@ -85,7 +85,7 @@ export async function getActivityByStravaId(stravaId: string): Promise<Activity 
     .select()
     .eq('strava_id', stravaId)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Activity | null;
 }
 
@@ -97,7 +97,7 @@ export async function getMostRecentActivityDate(athleteId: string): Promise<stri
     .order('activity_date', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data ? (data as { synced_at: string }).synced_at : null;
 }
 
@@ -109,7 +109,7 @@ export async function insertSnapshot(snapshot: NewAthleteSnapshot): Promise<Athl
     .insert(snapshot)
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as AthleteSnapshot;
 }
 
@@ -121,7 +121,7 @@ export async function getLatestSnapshot(athleteId: string): Promise<AthleteSnaps
     .order('snapshot_date', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as AthleteSnapshot | null;
 }
 
@@ -134,7 +134,7 @@ export async function getSnapshots(athleteId: string, weeks: number): Promise<At
     .eq('athlete_id', athleteId)
     .gte('snapshot_date', afterDate.toISOString().split('T')[0])
     .order('snapshot_date', { ascending: true });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as AthleteSnapshot[];
 }
 
@@ -146,7 +146,7 @@ export async function insertPlan(plan: NewPlan): Promise<Plan> {
     .insert(plan)
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Plan;
 }
 
@@ -159,7 +159,7 @@ export async function getActivePlan(athleteId: string): Promise<Plan | null> {
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as Plan | null;
 }
 
@@ -168,7 +168,7 @@ export async function updatePlanStatus(planId: string, status: Plan['status']): 
     .from('plans')
     .update({ status })
     .eq('id', planId);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 }
 
 // ─── Plan Sessions ────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export async function insertPlanSessions(sessions: NewPlanSession[]): Promise<Pl
     .from('plan_sessions')
     .insert(sessions)
     .select();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as PlanSession[];
 }
 
@@ -189,7 +189,7 @@ export async function getSessionsByPlanId(planId: string): Promise<PlanSession[]
     .select()
     .eq('plan_id', planId)
     .order('scheduled_date', { ascending: true });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as PlanSession[];
 }
 
@@ -200,7 +200,7 @@ export async function getSessionsByWeek(planId: string, weekNumber: number): Pro
     .eq('plan_id', planId)
     .eq('week_number', weekNumber)
     .order('scheduled_date', { ascending: true });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as PlanSession[];
 }
 
@@ -210,7 +210,7 @@ export async function getSessionById(id: string): Promise<PlanSession | null> {
     .select()
     .eq('id', id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as PlanSession | null;
 }
 
@@ -224,7 +224,7 @@ export async function updateSession(
     .eq('id', sessionId)
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as PlanSession;
 }
 
@@ -236,7 +236,7 @@ export async function insertSessionEdit(edit: NewSessionEdit): Promise<SessionEd
     .insert(edit)
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return data as SessionEdit;
 }
 
@@ -246,6 +246,6 @@ export async function getSessionEdits(sessionId: string): Promise<SessionEdit[]>
     .select()
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return (data ?? []) as SessionEdit[];
 }

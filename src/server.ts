@@ -414,7 +414,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return err(e.message);
     }
     logError(`Tool ${name} failed`, e);
-    const message = e instanceof Error ? e.message : String(e);
+    const message =
+      e instanceof Error ? e.message :
+      (typeof e === 'object' && e !== null && 'message' in e) ? String((e as Record<string, unknown>)['message']) :
+      String(e);
     return err(`Unexpected error in ${name}: ${message}`);
   }
 });

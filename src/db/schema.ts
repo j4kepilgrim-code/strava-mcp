@@ -1,4 +1,5 @@
-// SQL migration — run once via Supabase dashboard (SQL Editor) or supabase CLI
+import { db } from './client';
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS athlete (
   id TEXT PRIMARY KEY,
@@ -9,7 +10,7 @@ CREATE TABLE IF NOT EXISTS athlete (
   threshold_pace TEXT,
   css_per_100m TEXT,
   vo2max_estimate REAL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS activities (
   strava_id TEXT UNIQUE,
   athlete_id TEXT REFERENCES athlete(id),
   sport_type TEXT NOT NULL,
-  activity_date DATE NOT NULL,
+  activity_date TEXT NOT NULL,
   distance_m REAL,
   moving_time_s INTEGER,
   elapsed_time_s INTEGER,
@@ -26,64 +27,67 @@ CREATE TABLE IF NOT EXISTS activities (
   max_hr INTEGER,
   suffer_score INTEGER,
   perceived_effort INTEGER,
-  sport_data JSONB,
-  synced_at TIMESTAMPTZ DEFAULT NOW()
+  sport_data TEXT,
+  synced_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS athlete_snapshots (
   id TEXT PRIMARY KEY,
   athlete_id TEXT REFERENCES athlete(id),
-  snapshot_date DATE NOT NULL,
+  snapshot_date TEXT NOT NULL,
   weekly_distance_m REAL,
   weekly_elevation_m REAL,
   weekly_duration_s INTEGER,
   ctl REAL,
   atl REAL,
   tsb REAL,
-  sport_split JSONB,
+  sport_split TEXT,
   notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY,
   athlete_id TEXT REFERENCES athlete(id),
   goal_type TEXT NOT NULL,
-  goal_date DATE NOT NULL,
+  goal_date TEXT NOT NULL,
   goal_description TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  constraints JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  constraints TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS plan_sessions (
   id TEXT PRIMARY KEY,
   plan_id TEXT REFERENCES plans(id),
-  scheduled_date DATE NOT NULL,
-  original_date DATE NOT NULL,
+  scheduled_date TEXT NOT NULL,
+  original_date TEXT NOT NULL,
   week_number INTEGER NOT NULL,
   session_type TEXT NOT NULL,
   sport TEXT NOT NULL,
-  targets JSONB,
+  targets TEXT,
   rationale TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'standard',
   status TEXT NOT NULL DEFAULT 'planned',
   strava_activity_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Append-only audit log — never UPDATE or DELETE
 CREATE TABLE IF NOT EXISTS session_edits (
   id TEXT PRIMARY KEY,
   session_id TEXT REFERENCES plan_sessions(id),
   operation TEXT NOT NULL,
-  before_state JSONB,
-  after_state JSONB,
+  before_state TEXT,
+  after_state TEXT,
   triggered_by TEXT NOT NULL,
   note TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TEXT DEFAULT (datetime('now'))
 );
 `;
+
+export function runMigrations(): void {
+  db.exec(SCHEMA_SQL);
+}
 
 // TypeScript types matching each table row
 

@@ -1,13 +1,17 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import Database, { type Database as DatabaseType } from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
 
-dotenv.config();
+const DB_DIR = process.env.DB_PATH
+  ? path.dirname(process.env.DB_PATH)
+  : path.join(process.env.HOME ?? '.', '.strava-mcp');
 
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_ANON_KEY;
+const DB_FILE = process.env.DB_PATH ?? path.join(DB_DIR, 'db.sqlite');
 
-if (!url || !key) {
-  throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env');
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
-export const db = createClient(url, key);
+export const db: DatabaseType = new Database(DB_FILE);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');

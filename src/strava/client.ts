@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { getValidAccessToken } from './auth';
-import type { StravaAthlete, StravaActivity } from './types';
+import type { StravaAthlete, StravaActivity, StravaDetailedActivity } from './types';
 
 const BASE_URL = 'https://www.strava.com/api/v3';
 const PER_PAGE = 200;
@@ -26,6 +26,18 @@ export async function getAthlete(): Promise<StravaAthlete> {
     const { data } = await axios.get<StravaAthlete>(`${BASE_URL}/athlete`, {
       headers: await authHeaders(),
     });
+    return data;
+  } catch (err) {
+    handleStravaError(err);
+  }
+}
+
+export async function getActivityDetail(stravaActivityId: string): Promise<StravaDetailedActivity> {
+  try {
+    const { data } = await axios.get<StravaDetailedActivity>(
+      `${BASE_URL}/activities/${stravaActivityId}`,
+      { headers: await authHeaders() }
+    );
     return data;
   } catch (err) {
     handleStravaError(err);

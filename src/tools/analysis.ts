@@ -6,8 +6,10 @@ import {
   getSessionsByPlanId,
   getLatestSnapshot,
   getActivities,
+  updateActivitySportData,
 } from '../db/queries';
-import type { Activity, AthleteSnapshot, Athlete, PlanSession, RunData, RideData, SwimData } from '../db/schema';
+import { getActivityDetail as fetchStravaDetail } from '../strava/client';
+import type { Activity, AthleteSnapshot, Athlete, PlanSession, RunData, RideData, SwimData, LapData } from '../db/schema';
 
 export async function analyseWorkout(stravaActivityId: string): Promise<string> {
   const tokens = loadTokens();
@@ -19,6 +21,22 @@ export async function analyseWorkout(stravaActivityId: string): Promise<string> 
   const activity = await getActivityByStravaId(stravaActivityId);
   if (!activity) {
     return `Activity ${stravaActivityId} not found in the database. Run sync_recent_activities first to pull in recent activities, then try again.`;
+  }
+
+  // Fetch laps from Strava if not cached (do this early so they're available in the report)
+  const sportData = activity.sport_data as unknown as (RunData | RideData) & { laps?: LapData[] } | null;
+  if (activity.strava_id && (!sportData?.laps || sportData.laps.length === 0)) {
+    try {
+      const detail = await fetchStravaDetail(activity.strava_id);
+      if (detail.laps && detail.laps.length > 0) {
+        const laps = mapLapsFromStrava(detail.laps, activity.sport_type);
+        const updated = { ...(sportData ?? {}), laps };
+        await updateActivitySportData(activity.id, updated);
+        (activity as unknown as { sport_data: unknown }).sport_data = updated;
+      }
+    } catch {
+      // Non-fatal
+    }
   }
 
   // Find matching plan session and week context
@@ -47,6 +65,31 @@ export async function analyseWorkout(stravaActivityId: string): Promise<string> 
   const snapshot = await getLatestSnapshot(athlete.id);
 
   return formatReport(activity, matchedSession, weekSessions, previousActivity, snapshot, athlete);
+}
+
+// ─── Lap mapping ─────────────────────────────────────────────────────────────
+
+function mapLapsFromStrava(stravaLaps: { lap_index: number; distance: number; moving_time: number; average_speed: number; average_heartrate?: number; max_heartrate?: number; average_cadence?: number; average_watts?: number }[], sportType: string): LapData[] {
+  return stravaLaps.map((lap) => {
+    const base: LapData = {
+      lap_index: lap.lap_index,
+      distance_m: Math.round(lap.distance),
+      moving_time_s: lap.moving_time,
+      avg_hr: lap.average_heartrate ? Math.round(lap.average_heartrate) : undefined,
+      max_hr: lap.max_heartrate ? Math.round(lap.max_heartrate) : undefined,
+      avg_cadence: lap.average_cadence ? Math.round(lap.average_cadence) : undefined,
+      avg_watts: lap.average_watts ? Math.round(lap.average_watts) : undefined,
+    };
+    if (sportType === 'Run' && lap.average_speed) {
+      const secPerKm = Math.round(1000 / lap.average_speed);
+      const m = Math.floor(secPerKm / 60);
+      const s = secPerKm % 60;
+      base.avg_pace_per_km = `${m}:${s.toString().padStart(2, '0')}`;
+    } else if (sportType === 'Ride' && lap.average_speed) {
+      base.avg_speed_kph = Math.round(lap.average_speed * 3.6 * 10) / 10;
+    }
+    return base;
+  });
 }
 
 // ─── Session matching ─────────────────────────────────────────────────────────
@@ -122,6 +165,21 @@ function formatReport(
   if (activity.suffer_score) lines.push(`- **Suffer score:** ${activity.suffer_score}`);
   if (activity.perceived_effort) lines.push(`- **Perceived effort:** ${activity.perceived_effort}/10`);
   lines.push('');
+
+  // ── Lap breakdown (intervals/threshold) ─────────────────────────────────
+  const laps = ((activity.sport_data as unknown as Record<string, unknown> | null)?.['laps'] as LapData[] | undefined);
+  if (laps && laps.length > 1) {
+    lines.push('### Lap Breakdown');
+    lines.push('| Lap | Distance | Time | Pace / Speed | HR | Cadence |');
+    lines.push('|-----|----------|------|--------------|----|---------|');
+    for (const lap of laps) {
+      const pace = lap.avg_pace_per_km ? `${lap.avg_pace_per_km}/km` : lap.avg_speed_kph ? `${lap.avg_speed_kph}km/h` : '—';
+      lines.push(
+        `| ${lap.lap_index} | ${(lap.distance_m / 1000).toFixed(2)}km | ${formatDuration(lap.moving_time_s)} | ${pace} | ${lap.avg_hr ?? '—'} | ${lap.avg_cadence ?? '—'} |`
+      );
+    }
+    lines.push('');
+  }
 
   // ── Fitness context ──────────────────────────────────────────────────────
   if (snapshot) {

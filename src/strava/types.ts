@@ -44,6 +44,25 @@ export interface StravaActivity {
   average_stroke_rate?: number;
 }
 
+export interface StravaLap {
+  id: number;
+  name: string;
+  lap_index: number;
+  distance: number;        // metres
+  moving_time: number;     // seconds
+  elapsed_time: number;    // seconds
+  average_speed: number;   // m/s
+  max_speed: number;       // m/s
+  average_heartrate?: number;
+  max_heartrate?: number;
+  average_cadence?: number;
+  average_watts?: number;
+}
+
+export interface StravaDetailedActivity extends StravaActivity {
+  laps?: StravaLap[];
+}
+
 export interface StoredTokens {
   access_token: string;
   refresh_token: string;

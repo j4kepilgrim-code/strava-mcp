@@ -89,6 +89,14 @@ export async function getActivityByStravaId(stravaId: string): Promise<Activity 
   return data as Activity | null;
 }
 
+export async function updateActivitySportData(id: string, sportData: unknown): Promise<void> {
+  const { error } = await db
+    .from('activities')
+    .update({ sport_data: sportData })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function getMostRecentActivityDate(athleteId: string): Promise<string | null> {
   const { data, error } = await db
     .from('activities')

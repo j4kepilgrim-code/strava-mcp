@@ -117,10 +117,23 @@ export interface Activity {
   synced_at: string;
 }
 
+export interface LapData {
+  lap_index: number;
+  distance_m: number;
+  moving_time_s: number;
+  avg_pace_per_km?: string;  // runs
+  avg_speed_kph?: number;    // rides
+  avg_hr?: number;
+  max_hr?: number;
+  avg_cadence?: number;
+  avg_watts?: number;
+}
+
 export interface RunData {
   avg_pace_per_km: string | null;
   avg_cadence: number | null;
   avg_power: number | null;
+  laps?: LapData[];
 }
 
 export interface RideData {
@@ -129,6 +142,7 @@ export interface RideData {
   ftp_percentage: number | null;
   avg_cadence: number | null;
   avg_speed_kph: number | null;
+  laps?: LapData[];
 }
 
 export interface SwimData {

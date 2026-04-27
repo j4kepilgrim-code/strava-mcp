@@ -1,6 +1,8 @@
 import { loadTokens } from '../strava/auth';
-import { getAthleteByStravaId, getActivities, getActivityById } from '../db/queries';
-import type { Activity } from '../db/schema';
+import { getAthleteByStravaId, getActivities, getActivityById, updateActivitySportData } from '../db/queries';
+import { getActivityDetail as fetchStravaDetail } from '../strava/client';
+import type { Activity, RunData, RideData, LapData } from '../db/schema';
+import type { StravaLap } from '../strava/types';
 
 export async function getActivityHistory(weeks = 8, sport?: string): Promise<string> {
   const tokens = loadTokens();
@@ -68,6 +70,22 @@ export async function getActivityDetail(activityId: string): Promise<string> {
   const activity = await getActivityById(activityId);
   if (!activity) return `No activity found with ID: ${activityId}`;
 
+  // Fetch laps from Strava if not yet cached
+  const sportData = activity.sport_data as unknown as (RunData | RideData) & { laps?: LapData[] } | null;
+  if (activity.strava_id && (!sportData?.laps || sportData.laps.length === 0)) {
+    try {
+      const detail = await fetchStravaDetail(activity.strava_id);
+      if (detail.laps && detail.laps.length > 0) {
+        const laps = mapLaps(detail.laps, activity.sport_type);
+        const updated = { ...(sportData ?? {}), laps };
+        await updateActivitySportData(activity.id, updated);
+        (activity as unknown as { sport_data: unknown }).sport_data = updated;
+      }
+    } catch {
+      // Non-fatal — show activity without laps if Strava fetch fails
+    }
+  }
+
   const lines = [
     `## Activity — ${activity.sport_type} on ${activity.activity_date}`,
     '',
@@ -80,13 +98,26 @@ export async function getActivityDetail(activityId: string): Promise<string> {
     `- **Perceived effort:** ${activity.perceived_effort ?? 'N/A'}`,
   ];
 
-  if (activity.sport_data) {
+  const d = activity.sport_data as unknown as Record<string, unknown> | null;
+  if (d) {
     lines.push('', '### Sport Metrics');
-    const d = activity.sport_data as unknown as Record<string, unknown>;
     for (const [key, value] of Object.entries(d)) {
-      if (value !== null && value !== undefined) {
-        lines.push(`- **${formatKey(key)}:** ${value}`);
-      }
+      if (key === 'laps' || value === null || value === undefined) continue;
+      lines.push(`- **${formatKey(key)}:** ${value}`);
+    }
+  }
+
+  // Lap breakdown
+  const laps = (d?.['laps'] as LapData[] | undefined);
+  if (laps && laps.length > 0) {
+    lines.push('', '### Lap Breakdown');
+    lines.push('| Lap | Distance | Time | Pace / Speed | HR | Cadence |');
+    lines.push('|-----|----------|------|--------------|----|---------|');
+    for (const lap of laps) {
+      const pace = lap.avg_pace_per_km ? `${lap.avg_pace_per_km}/km` : lap.avg_speed_kph ? `${lap.avg_speed_kph}km/h` : '—';
+      lines.push(
+        `| ${lap.lap_index} | ${formatKm(lap.distance_m)} | ${formatDuration(lap.moving_time_s)} | ${pace} | ${lap.avg_hr ?? '—'} | ${lap.avg_cadence ?? '—'} |`
+      );
     }
   }
 
@@ -126,6 +157,29 @@ function formatDuration(seconds: number | null | undefined): string {
 
 function formatKey(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function mapLaps(stravaLaps: StravaLap[], sportType: string): LapData[] {
+  return stravaLaps.map((lap) => {
+    const base: LapData = {
+      lap_index: lap.lap_index,
+      distance_m: Math.round(lap.distance),
+      moving_time_s: lap.moving_time,
+      avg_hr: lap.average_heartrate ? Math.round(lap.average_heartrate) : undefined,
+      max_hr: lap.max_heartrate ? Math.round(lap.max_heartrate) : undefined,
+      avg_cadence: lap.average_cadence ? Math.round(lap.average_cadence) : undefined,
+      avg_watts: lap.average_watts ? Math.round(lap.average_watts) : undefined,
+    };
+    if (sportType === 'Run' && lap.average_speed) {
+      const secPerKm = Math.round(1000 / lap.average_speed);
+      const m = Math.floor(secPerKm / 60);
+      const s = secPerKm % 60;
+      base.avg_pace_per_km = `${m}:${s.toString().padStart(2, '0')}`;
+    } else if (sportType === 'Ride' && lap.average_speed) {
+      base.avg_speed_kph = Math.round(lap.average_speed * 3.6 * 10) / 10;
+    }
+    return base;
+  });
 }
 
 function getPaceString(a: Activity): string {

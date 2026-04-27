@@ -25,25 +25,17 @@ An AI running coach that lives inside Claude Desktop. Connects to your Strava ac
 
 ## Installation
 
-### Option A — npx (no clone needed)
+### Option A — npx (recommended)
 
-Build the package first (until it's published to npm):
+No installation needed. Just add the Claude Desktop config below and npx handles the rest.
 
-```bash
-git clone https://github.com/j4kepilgrim-code/strava-mcp.git
-cd strava-mcp
-npm install && npm run build
-```
-
-Then point Claude Desktop at `dist/index.js` (see config below).
-
-### Option B — global install from source
+### Option B — clone from source
 
 ```bash
 git clone https://github.com/j4kepilgrim-code/strava-mcp.git
 cd strava-mcp
 npm install && npm run build
-npm link   # makes `strava-mcp` available as a command
+npm link   # makes strava-mcp available as a command
 ```
 
 ---
@@ -56,8 +48,8 @@ Open Claude Desktop → Settings → Developer → Edit Config, and add:
 {
   "mcpServers": {
     "strava-training": {
-      "command": "node",
-      "args": ["/absolute/path/to/strava-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "@jp1990/strava-mcp"],
       "env": {
         "STRAVA_CLIENT_ID": "your_client_id",
         "STRAVA_CLIENT_SECRET": "your_client_secret",
@@ -68,9 +60,7 @@ Open Claude Desktop → Settings → Developer → Edit Config, and add:
 }
 ```
 
-Replace `/absolute/path/to/strava-mcp` with wherever you cloned the repo.
-
-If you used `npm link`, you can use:
+If you cloned and used `npm link`:
 ```json
 "command": "strava-mcp",
 "args": []

@@ -1,5 +1,5 @@
 {
-  "name": "strava-mcp",
+  "name": "@jp1990/strava-mcp",
   "version": "0.1.0",
   "description": "AI running coach MCP server — connects Strava to Claude Desktop for personalised training plans",
   "bin": {

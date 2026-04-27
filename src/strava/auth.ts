@@ -6,7 +6,7 @@ import type { StravaTokenResponse, StoredTokens } from './types';
 
 dotenv.config();
 
-const TOKENS_PATH = path.join(path.dirname(new URL(import.meta.url).pathname), '../../.strava-tokens.json');
+const TOKENS_PATH = path.join(process.env.HOME ?? process.env.USERPROFILE ?? '.', '.strava-mcp', '.strava-tokens.json');
 const TOKEN_URL = 'https://www.strava.com/oauth/token';
 
 function getClientId(): string {

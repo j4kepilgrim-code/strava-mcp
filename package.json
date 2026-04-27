@@ -1,11 +1,19 @@
 {
   "name": "strava-mcp",
   "version": "0.1.0",
-  "description": "Strava MCP server for triathlon training coaching",
+  "description": "AI running coach MCP server — connects Strava to Claude Desktop for personalised training plans",
+  "bin": {
+    "strava-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup src/index.ts --format cjs --dts --out-dir dist",
-    "start": "node dist/index.js"
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

@@ -10,6 +10,7 @@ import { getAthleteProfile, getFitnessTrend, updateAthleteProfile, recalibratePl
 import { getActivityHistory, getActivityDetail } from './tools/history';
 import { getCurrentPlan, getWeekSessions, createPlan, getPlanRecommendationTool } from './tools/plan';
 import { swapSessionsTool, moveSessionTool, skipSessionTool, compressWeekTool, rescaleWeekTool, addNoteTool } from './tools/reschedule';
+import { analyseWorkout } from './tools/analysis';
 import { log, logError } from './logger';
 
 export const server = new Server(
@@ -399,8 +400,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ));
       }
 
-      case 'analyse_workout':
-        return ok('analyse_workout is not yet implemented — coming in the next build step.');
+      case 'analyse_workout': {
+        requireAuth();
+        requireArgs(args, ['strava_activity_id']);
+        return ok(await analyseWorkout(args['strava_activity_id'] as string));
+      }
 
       default:
         return err(`Unknown tool: ${name}`);

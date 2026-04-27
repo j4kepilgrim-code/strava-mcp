@@ -12,6 +12,7 @@ import { getCurrentPlan, getWeekSessions, createPlan, getPlanRecommendationTool 
 import { swapSessionsTool, moveSessionTool, skipSessionTool, compressWeekTool, rescaleWeekTool, addNoteTool } from './tools/reschedule';
 import { analyseWorkout } from './tools/analysis';
 import { log, logError } from './logger';
+import axios from 'axios';
 
 export const server = new Server(
   { name: 'strava-training', version: '0.1.0' },
@@ -245,6 +246,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: 'register_webhook',
+      description: 'Registers the Strava webhook subscription so new activities auto-sync in real time. Requires a publicly accessible callback URL (e.g. via ngrok). Only needs to be called once.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          callback_url: { type: 'string', description: 'Publicly accessible URL for the webhook endpoint, e.g. https://abc123.ngrok.io/webhook' },
+        },
+        required: ['callback_url'],
+      },
+    },
+    {
       name: 'add_note',
       description: 'Logs a coaching note against a date. Use to record injuries, illness, race results, travel, or any athlete context the plan should account for.',
       inputSchema: {
@@ -391,6 +403,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         requireAuth();
         requireArgs(args, ['week_number', 'load_factor']);
         return ok(await rescaleWeekTool(args['week_number'] as number, args['load_factor'] as number));
+      }
+
+      case 'register_webhook': {
+        requireAuth();
+        requireArgs(args, ['callback_url']);
+        const verifyToken = process.env.STRAVA_WEBHOOK_VERIFY_TOKEN ?? 'strava-mcp-verify';
+        const clientId = process.env.STRAVA_CLIENT_ID;
+        const clientSecret = process.env.STRAVA_CLIENT_SECRET;
+        if (!clientId || !clientSecret) return err('STRAVA_CLIENT_ID or STRAVA_CLIENT_SECRET not set');
+        try {
+          const { data } = await axios.post('https://www.strava.com/api/v3/push_subscriptions', {
+            client_id: clientId,
+            client_secret: clientSecret,
+            callback_url: args['callback_url'],
+            verify_token: verifyToken,
+          });
+          return ok(`Webhook registered successfully. Subscription ID: ${(data as { id: number }).id}\n\nNew Strava activities will now auto-sync in real time.`);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          return err(`Failed to register webhook: ${msg}\n\nMake sure the callback URL is publicly accessible and the webhook server is running.`);
+        }
       }
 
       case 'add_note': {

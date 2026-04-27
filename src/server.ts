@@ -139,7 +139,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'create_plan',
-      description: 'Generates a full training plan from scratch based on the athlete\'s goal, available training time, and current fitness. Archives any existing active plan. Call get_plan_recommendation first to suggest parameters, then get_athlete_profile to check fitness.',
+      description: 'Generates a full training plan from scratch based on the athlete\'s goal, available training time, and current fitness. Archives any existing active plan. Call get_plan_recommendation first to suggest parameters, then get_athlete_profile to check fitness. Use start_date when the athlete has a race or event this week and training should begin afterwards.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -148,6 +148,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           goal_description: { type: 'string', description: 'Free text goal e.g. "Sub 1:45 half marathon"' },
           available_days: { type: 'number', description: 'Number of training days available per week (1–7)' },
           max_hours_per_week: { type: 'number', description: 'Maximum total training hours per week' },
+          start_date: { type: 'string', description: 'ISO 8601 date for the first day of week 1. Use this when the athlete has a race or recovery period before training begins (e.g. "2026-05-05" to start the Monday after a Sunday race).' },
         },
         required: ['goal_type', 'goal_date', 'available_days', 'max_hours_per_week'],
       },
@@ -339,6 +340,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           goal_description: typeof args['goal_description'] === 'string' ? args['goal_description'] : undefined,
           available_days: args['available_days'] as number,
           max_hours_per_week: args['max_hours_per_week'] as number,
+          start_date: typeof args['start_date'] === 'string' ? args['start_date'] : undefined,
         }));
       }
 

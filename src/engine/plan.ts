@@ -331,25 +331,28 @@ export function generateWeek(
 export function generatePlan(
   plan: Plan,
   athlete: Athlete,
-  latestSnapshot: AthleteSnapshot | null
+  latestSnapshot: AthleteSnapshot | null,
+  startDate?: string  // ISO date — defaults to Monday of current week
 ): NewPlanSession[] {
   const goalType = plan.goal_type as GoalType;
   const ctl = latestSnapshot?.ctl ?? 30;
   const constraints = plan.constraints ?? { available_days: 4, max_hours_per_week: 6, preferred_session_types: [], excluded_days: [] };
 
-  const today = new Date();
+  // Use provided start date or Monday of current week
+  const anchor = startDate ? new Date(startDate) : new Date();
+  if (!startDate) {
+    const mondayOffset = anchor.getUTCDay() === 0 ? -6 : 1 - anchor.getUTCDay();
+    anchor.setUTCDate(anchor.getUTCDate() + mondayOffset);
+  }
+
   const goalDate = new Date(plan.goal_date);
-  const totalWeeks = Math.ceil((goalDate.getTime() - today.getTime()) / (7 * 86400000));
+  const totalWeeks = Math.ceil((goalDate.getTime() - anchor.getTime()) / (7 * 86400000));
 
   const baseFraction = startingHoursFraction(ctl);
   const baseHours = constraints.max_hours_per_week * baseFraction;
 
   const allSessions: NewPlanSession[] = [];
-
-  // Monday of the current week as the starting point
-  const mondayOffset = today.getUTCDay() === 0 ? -6 : 1 - today.getUTCDay();
-  const weekZeroMonday = new Date(today);
-  weekZeroMonday.setUTCDate(today.getUTCDate() + mondayOffset);
+  const weekZeroMonday = anchor;
 
   for (let week = 1; week <= totalWeeks; week++) {
     const weekStart = new Date(weekZeroMonday);

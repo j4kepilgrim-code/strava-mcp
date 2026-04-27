@@ -125,6 +125,7 @@ export async function createPlan(params: {
   goal_description?: string;
   available_days: number;
   max_hours_per_week: number;
+  start_date?: string;
 }): Promise<string> {
   const tokens = loadTokens();
   if (!tokens) throw new Error('Not authenticated');
@@ -140,8 +141,9 @@ export async function createPlan(params: {
   }
 
   const today = new Date().toISOString().split('T')[0]!;
+  const planStart = params.start_date ?? today;
   const weeksToGoal = Math.ceil(
-    (new Date(params.goal_date).getTime() - new Date(today).getTime()) / (7 * 86400000)
+    (new Date(params.goal_date).getTime() - new Date(planStart).getTime()) / (7 * 86400000)
   );
 
   const minWeeks = MIN_WEEKS[goalType];
@@ -184,7 +186,7 @@ export async function createPlan(params: {
   };
 
   const snapshot = await getLatestSnapshot(athlete.id);
-  const sessions = generatePlan(newPlan, athlete, snapshot);
+  const sessions = generatePlan(newPlan, athlete, snapshot, params.start_date);
 
   await insertPlan({
     id: newPlan.id,
@@ -201,6 +203,7 @@ export async function createPlan(params: {
   return [
     `## Plan Created — ${goalType.replace('_', ' ')} by ${params.goal_date}`,
     '',
+    `- **Starts:** ${planStart}`,
     `- **${weeksToGoal} weeks** to race day`,
     `- **${sessions.length} sessions** generated`,
     `- **${params.available_days} days/week**, max ${params.max_hours_per_week}h`,

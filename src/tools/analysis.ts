@@ -40,7 +40,9 @@ export async function analyseWorkout(stravaActivityId: string): Promise<string> 
   // Previous activity of same sport type for trend comparison
   const ninetyDaysAgo = addDays(activity.activity_date, -90);
   const recentSameType = await getActivities(athlete.id, ninetyDaysAgo, activity.sport_type);
-  const previousActivity = recentSameType.find((a) => a.id !== activity.id) ?? null;
+  const previousActivity = recentSameType.find(
+    (a) => a.id !== activity.id && a.activity_date < activity.activity_date
+  ) ?? null;
 
   const snapshot = await getLatestSnapshot(athlete.id);
 

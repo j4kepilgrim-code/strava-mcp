@@ -60,8 +60,20 @@ export interface StravaLap {
   average_watts?: number;
 }
 
+export interface StravaSplit {
+  split: number;          // km number (1-indexed)
+  distance: number;       // metres (last split may be < 1000)
+  moving_time: number;    // seconds
+  elapsed_time: number;   // seconds
+  average_speed: number;  // m/s
+  average_heartrate?: number;
+  average_cadence?: number;
+  average_watts?: number;
+}
+
 export interface StravaDetailedActivity extends StravaActivity {
   laps?: StravaLap[];
+  splits_metric?: StravaSplit[];
 }
 
 export interface StoredTokens {

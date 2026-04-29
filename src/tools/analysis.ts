@@ -24,13 +24,19 @@ export async function analyseWorkout(stravaActivityId: string): Promise<string> 
     return `Activity ${stravaActivityId} not found in the database. Run sync_recent_activities first to pull in recent activities, then try again.`;
   }
 
-  // Fetch laps from Strava if not cached (do this early so they're available in the report)
+  // Fetch laps/splits from Strava if not cached
   const sportData = activity.sport_data as unknown as (RunData | RideData) & { laps?: LapData[] } | null;
-  if (activity.strava_id && (!sportData?.laps || sportData.laps.length === 0)) {
+  if (activity.strava_id && (!sportData?.laps || sportData.laps.length <= 1)) {
     try {
       const detail = await fetchStravaDetail(activity.strava_id);
-      if (detail.laps && detail.laps.length > 0) {
-        const laps = mapLapsFromStrava(detail.laps, activity.sport_type);
+      // Prefer device laps (>1 means real lap data); fall back to km splits
+      const hasRealLaps = detail.laps && detail.laps.length > 1;
+      const laps = hasRealLaps
+        ? mapLapsFromStrava(detail.laps!, activity.sport_type)
+        : detail.splits_metric && detail.splits_metric.length > 1
+          ? mapSplitsFromStrava(detail.splits_metric, activity.sport_type)
+          : null;
+      if (laps) {
         const updated = { ...(sportData ?? {}), laps };
         await updateActivitySportData(activity.id, updated);
         (activity as unknown as { sport_data: unknown }).sport_data = updated;
@@ -96,6 +102,28 @@ function mapLapsFromStrava(stravaLaps: { lap_index: number; distance: number; mo
       base.avg_pace_per_km = `${m}:${s.toString().padStart(2, '0')}`;
     } else if (sportType === 'Ride' && lap.average_speed) {
       base.avg_speed_kph = Math.round(lap.average_speed * 3.6 * 10) / 10;
+    }
+    return base;
+  });
+}
+
+function mapSplitsFromStrava(splits: { split: number; distance: number; moving_time: number; average_speed: number; average_heartrate?: number; average_cadence?: number; average_watts?: number }[], sportType: string): LapData[] {
+  return splits.map((split) => {
+    const base: LapData = {
+      lap_index: split.split,
+      distance_m: Math.round(split.distance),
+      moving_time_s: split.moving_time,
+      avg_hr: split.average_heartrate ? Math.round(split.average_heartrate) : undefined,
+      avg_cadence: split.average_cadence ? Math.round(split.average_cadence) : undefined,
+      avg_watts: split.average_watts ? Math.round(split.average_watts) : undefined,
+    };
+    if (sportType === 'Run' && split.average_speed) {
+      const secPerKm = Math.round(1000 / split.average_speed);
+      const m = Math.floor(secPerKm / 60);
+      const s = secPerKm % 60;
+      base.avg_pace_per_km = `${m}:${s.toString().padStart(2, '0')}`;
+    } else if (sportType === 'Ride' && split.average_speed) {
+      base.avg_speed_kph = Math.round(split.average_speed * 3.6 * 10) / 10;
     }
     return base;
   });
@@ -178,11 +206,15 @@ function formatReport(
   if (activity.perceived_effort) lines.push(`- **Perceived effort:** ${activity.perceived_effort}/10`);
   lines.push('');
 
-  // ── Lap breakdown (intervals/threshold) ─────────────────────────────────
+  // ── Lap / km split breakdown ─────────────────────────────────────────────
   const laps = ((activity.sport_data as unknown as Record<string, unknown> | null)?.['laps'] as LapData[] | undefined);
   if (laps && laps.length > 1) {
-    lines.push('### Lap Breakdown');
-    lines.push('| Lap | Distance | Time | Pace / Speed | HR | Cadence |');
+    // Detect whether these are km splits (distances ~1000m) or device laps (variable)
+    const isKmSplits = laps.every((l) => l.distance_m <= 1100);
+    const header = isKmSplits ? '### KM Splits' : '### Lap Breakdown';
+    const col = isKmSplits ? 'KM' : 'Lap';
+    lines.push(header);
+    lines.push(`| ${col} | Distance | Time | Pace / Speed | HR | Cadence |`);
     lines.push('|-----|----------|------|--------------|----|---------|');
     for (const lap of laps) {
       const pace = lap.avg_pace_per_km ? `${lap.avg_pace_per_km}/km` : lap.avg_speed_kph ? `${lap.avg_speed_kph}km/h` : '—';
